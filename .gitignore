@@ -3,6 +3,8 @@ build/
 dist/
 __pycache__/
 .scratch/
+.DS_Store
+.claude/settings.json
 
 # local reference copy of stock skin content (never commit Akai assets)
 Assets/

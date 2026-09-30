@@ -70,6 +70,24 @@ int main(void) {
         CHECK(a->getP(a, pop) < 0.5f && automated[pop] == 1, "a pick closes it and tells the host once");
     }
 
+    {   /* tempo-sync (guarded: only ports with these keys): host is 120 BPM, 1/4 note = 500 ms.
+         * Verifies the host GetTime path, the sync enum + division popup reach the DSP, and the
+         * delayTime display reflects the division. */
+        int ds = -1, dd = -1, dt = -1;
+        for (int i = 0; i < NPARAMS; i++) {
+            if (!strcmp(PARAMS[i].key, "delaySync")) ds = i;
+            if (!strcmp(PARAMS[i].key, "delayDiv"))  dd = i;
+            if (!strcmp(PARAMS[i].key, "delayTime")) dt = i;
+        }
+        if (ds >= 0 && dd >= 0 && dt >= 0) {
+            a->setP(a, dd, 2.0f / (PARAMS[dd].nopts - 1));   /* 1/4 */
+            a->setP(a, ds, 1.0f);                            /* Sync */
+            run(a, 1);                                       /* processReplacing -> update_tempo (120 BPM) */
+            a->d(a, 7, dt, 0, d, 0);
+            CHECK(strstr(d, "1/4") && strstr(d, "500"), "delay sync 1/4 @120 -> \"%s\" (want 1/4, 500 ms)", d);
+        }
+    }
+
     ME m = {1, sizeof(ME), 0, 0, 0, 0, {0x90, 60, 100, 0}}; EV ev = {1, 0, {&m, 0}};
     a->d(a, 25, 0, 0, &ev, 0);
     float L[128], R[128], *o[2] = {L, R}; double e = 0;

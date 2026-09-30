@@ -52,23 +52,38 @@ static void crop(const char *path, int x, int y, int w, int h) {
  * this file's own stub only covered the non-TD3 branch and has been dropped in favour of it). */
 
 static void knob_body(int cx, int cy, int r, int pct) {
-    /* widget_knob() minus its label/value text (those come from the skin). A dotted arc instead
-     * of a solid ring, closer to the JV-880 shadow mockups' "dark knob, green dotted arc, small
-     * pointer" look (docs/SHADOW-GUI-PROPOSAL.md) -- shadow_art.c's own addition (not shared with
-     * force-shadow's real on-device renderer, which keeps its plain ring). Dot count scales with
-     * radius so small/large knobs both read as a ring, not a sparse/crowded one. */
-    int ndots = r < 24 ? 16 : (r < 36 ? 22 : 28);
-    int dotr = r < 24 ? 1 : 2;
-    for (int i = 0; i < ndots; i++) {
-        double a = 2 * M_PI * i / ndots - M_PI / 2;
-        int dx = cx + (int)lround((r + 4) * cos(a));
-        int dy = cy + (int)lround((r + 4) * sin(a));
-        fill_circle(dx, dy, dotr, KNOB_RING);
+    /* Mutable-Instruments knob: a matte black skirt with a white cap, and a single white position
+     * line across the black skirt (like a real MI module — no line on the white cap itself).
+     * Engraved end-stop ticks on the panel. Kept within the filmstrip's ~5px margin (strip = 2r+10).
+     * shadow_art.c-only; force-shadow's on-device renderer keeps its plain ring. */
+    double angle = (-135.0 + 270.0 * pct / 100.0) * M_PI / 180.0, s = sin(angle), co = cos(angle);
+    int capr = (int)lround(r * 0.60), pw = r < 24 ? 1 : 2;
+    /* engraved min/max end-stop ticks on the panel */
+    for (int e = 0; e < 2; e++) {
+        double a = (e ? 135.0 : -135.0) * M_PI / 180.0, es = sin(a), ec = cos(a);
+        for (int t = 0; t <= 2; t++) {
+            int rr = r + 1 + t;
+            fill_circle(cx + (int)lround(rr * es), cy - (int)lround(rr * ec), 1, KNOB_RING);
+        }
     }
+    /* black skirt */
     fill_circle(cx, cy, r, KNOB_FACE);
-    int dx, dy;
-    knob_dot(cx, cy, r, pct, &dx, &dy);
-    fill_circle(dx, dy, r / 7 + 2, KNOB_DOT_COLOR);
+    /* soft top sheen on the skirt for a moulded feel */
+    for (int yy = -r; yy <= r; yy++)
+        for (int xx = -r; xx <= r; xx++) {
+            if (xx * xx + yy * yy > (r - 1) * (r - 1)) continue;
+            double hx = xx + 0.42 * r, hy = yy + 0.42 * r;
+            int alpha = (int)lround(38.0 - sqrt(hx * hx + hy * hy) * 38.0 / (r * 1.2));
+            if (alpha > 0) put_px_blend(cx + xx, cy + yy, 0xffffff, alpha);
+        }
+    /* white position line across the black skirt (cap edge -> rim) */
+    for (int t = 0; t <= 20; t++) {
+        int rr = (capr - 1) + ((r - 2) - (capr - 1)) * t / 20;
+        fill_circle(cx + (int)lround(rr * s), cy - (int)lround(rr * co), pw, 0xffffff);
+    }
+    /* white cap with a thin dark bezel — no line drawn on the cap (real MI look) */
+    fill_circle(cx, cy, capr, 0xffffff);
+    draw_ring(cx, cy, capr, 1, 0x2a2a2a);
 }
 
 static void pill(int cx, int cy, int on) {
@@ -123,20 +138,33 @@ static void strip(const char *path, int r, int frames, uint32_t bg) {
     fclose(f);
 }
 
-/* Slider in the knob's palette: dark well, accent fill up to the value, knob-face thumb. */
+/* Mutable-style fader: a thin dark track, an accent (cyan) fill up to the value, and a rectangular
+ * white cap (portrait for vertical, landscape for horizontal) with a dark bezel + centre groove. */
 static void slider_body(int x, int y, int w, int h, int vert, double t) {
-    fill_rr(x, y, w, h, (vert ? w : h) / 2, 0x050403);
-    int pad = 4, th = vert ? w - 2 * pad : h - 2 * pad;           /* thumb size */
     if (vert) {
+        int wellw = 8, wx = x + (w - wellw) / 2;
+        fill_rr(wx, y, wellw, h, wellw / 2, 0x2a2a2a);                 /* thin track */
+        int pad = 4, th = 28, tw = (w - 12 < 16 ? 16 : w - 12);       /* portrait cap */
         int travel = h - 2 * pad - th, ty = y + pad + (int)lround((1.0 - t) * travel);
-        fill_rr(x + pad + (w - 2 * pad) / 2 - 3, ty + th / 2, 6, y + h - pad - (ty + th / 2), 3, KNOB_DOT_COLOR);
-        fill_circle(x + w / 2, ty + th / 2, th / 2, KNOB_FACE);
-        draw_ring(x + w / 2, ty + th / 2, th / 2 + 1, 2, KNOB_RING);
+        int fy = ty + th / 2;
+        if (y + h - pad - fy > 0)
+            fill_rr(wx, fy, wellw, y + h - pad - fy, wellw / 2, ACCENT);   /* fill below the cap */
+        int tx = x + (w - tw) / 2;
+        fill_rr(tx - 1, ty - 1, tw + 2, th + 2, 5, 0x2a2a2a);          /* bezel */
+        fill_rr(tx, ty, tw, th, 4, 0xffffff);                         /* white cap */
+        fill_rect(tx + 3, ty + th / 2 - 1, tw - 6, 2, 0x2a2a2a);      /* centre groove */
     } else {
-        int travel = w - 2 * pad - th, tx = x + pad + (int)lround(t * travel);
-        fill_rr(x + pad, y + h / 2 - 3, tx + th / 2 - (x + pad), 6, 3, KNOB_DOT_COLOR);
-        fill_circle(tx + th / 2, y + h / 2, th / 2, KNOB_FACE);
-        draw_ring(tx + th / 2, y + h / 2, th / 2 + 1, 2, KNOB_RING);
+        int wellh = 8, wy = y + (h - wellh) / 2;
+        fill_rr(x, wy, w, wellh, wellh / 2, 0x2a2a2a);
+        int pad = 4, tw = 28, th = (h - 12 < 16 ? 16 : h - 12);       /* landscape cap */
+        int travel = w - 2 * pad - tw, tx = x + pad + (int)lround(t * travel);
+        int fx = tx + tw / 2;
+        if (fx - (x + pad) > 0)
+            fill_rr(x + pad, wy, fx - (x + pad), wellh, wellh / 2, ACCENT);
+        int ty = y + (h - th) / 2;
+        fill_rr(tx - 1, ty - 1, tw + 2, th + 2, 5, 0x2a2a2a);
+        fill_rr(tx, ty, tw, th, 4, 0xffffff);
+        fill_rect(tx + tw / 2 - 1, ty + 3, 2, th - 6, 0x2a2a2a);
     }
 }
 
@@ -165,14 +193,15 @@ int main(void) {
         if (!strcmp(op, "clear") && n == 2) clear(HEX(a[1]));
         else if (!strcmp(op, "frame") && n == 6) frame_box(atoi(a[1]), atoi(a[2]), atoi(a[3]), atoi(a[4]), a[5]);
         else if (!strcmp(op, "frameblank") && n == 5) frame_box_blank(atoi(a[1]), atoi(a[2]), atoi(a[3]), atoi(a[4]));
-        else if (!strcmp(op, "text") && n == 6) draw_text_c(atoi(a[1]), atoi(a[2]), a[5], (float)atof(a[3]), HEX(a[4]));
+        else if (!strcmp(op, "text") && n == 6) label_text_c(atoi(a[1]), atoi(a[2]), a[5], (float)atof(a[3]), HEX(a[4]));
         else if (!strcmp(op, "knob") && n == 5) knob_body(atoi(a[1]), atoi(a[2]), atoi(a[3]), atoi(a[4]));
         else if (!strcmp(op, "pill") && n == 4) pill(atoi(a[1]), atoi(a[2]), atoi(a[3]));
         else if (!strcmp(op, "button") && n == 5) widget_button(atoi(a[1]), atoi(a[2]), a[4], HEX(a[3]));
-        else if (!strcmp(op, "seg") && n == 8) {
+        else if (!strcmp(op, "seg") && (n == 8 || n == 9)) {
             int x = atoi(a[1]), y = atoi(a[2]), w = atoi(a[3]), h = atoi(a[4]);
+            float sc = (n == 9) ? (float)atof(a[8]) : 1.6f;   /* optional per-seg scale: popup options pass a larger one */
             fill_rect(x, y, w, h, HEX(a[5]));
-            draw_text_c(x + w / 2, y + h / 2 - 6, a[7], 1.15f, HEX(a[6]));   /* was 1.5f, see shadow_skin.py's LABEL_SCALE */
+            label_text_c(x + w / 2, y + h / 2 - (int)lround(11.0 * sc / 1.6), a[7], sc, HEX(a[6]));   /* font_label TTF if set, else baked font; recenter scales with glyph height */
         }
         else if (!strcmp(op, "theme") && n == 2) load_conf(a[1]);
         else if (!strcmp(op, "readout") && n == 6) widget_readout(atoi(a[1]), atoi(a[2]), atoi(a[3]), atoi(a[4]), a[5][0] == '-' ? "" : a[5], "");

@@ -394,6 +394,10 @@ static void label_text_c(int cx, int y, const char *s, float scale, uint32_t col
     if (FONT_LABEL.loaded) ttf_draw_text_c(&FONT_LABEL, cx, y, s, scale, color);
     else draw_text_c(cx, y, s, scale, color);
 }
+static void label_text(int x, int y, const char *s, float scale, uint32_t color) {  /* left-aligned font_label */
+    if (FONT_LABEL.loaded) ttf_draw_text(&FONT_LABEL, x, y, s, scale, color);
+    else draw_text(x, y, s, scale, color);
+}
 static int label_width(const char *s, float scale) {
     return FONT_LABEL.loaded ? ttf_text_width(&FONT_LABEL, s, scale) : text_width(s, scale);
 }
@@ -500,8 +504,11 @@ static void frame_box(int x, int y, int w, int h, const char *title) {
      * renderer is a separate, hand-ported copy and is untouched by this).
      * Real font (font_title=): title_text(), else the baked font as before. */
     frame_border(x, y, w, h);
-    if (G_TD3) title_text(x + 20, y + 14, title, 1.15f, ACCENT);
-    else title_text(x + 18, y + 14, title, 1.15f, ACCENT_HI);
+    /* A real font (font_title=) reads smaller than the baked bitmap and isn't letter-spaced,
+     * so scale it up; keep 1.15 for the baked font8x8 fallback (1.5 there read too wide). */
+    float ts = FONT_TITLE.loaded ? 1.6f : 1.15f;
+    if (G_TD3) title_text(x + 20, y + 13, title, ts, ACCENT);
+    else title_text(x + 18, y + 13, title, ts, ACCENT_HI);
 }
 
 /* ---- chrome: top bar + tab bar ---- */
@@ -537,7 +544,7 @@ static const char *TABS[] = { "VOICE", "WAVEFOLDER / FILTER", "MOD / RANDOM / MI
 
 static void widget_readout(int cx, int cy, int w, int h, const char *label, const char *text) {
     int x0 = cx - w/2, y0 = cy - h/2;
-    if (label[0]) draw_text(x0, y0 - 22, label, 1.5f, INK_DIM);
+    if (label[0]) label_text(x0, y0 - 22, label, 1.5f, INK_DIM);
     /* topbar_style=display: this readout sits in the dot-matrix LCD bar
      * (JV-880/DX7's bank_name display) -- drawn as a dot cell, not the
      * plain LCD-well box every other page uses. See draw_chrome_named()'s
@@ -560,7 +567,7 @@ static void widget_readout(int cx, int cy, int w, int h, const char *label, cons
  * glyph flank a centre LCD box showing the current text. */
 static void widget_stepper(int cx, int cy, int w, int h, const char *label, const char *text) {
     int x0 = cx - w/2, y0 = cy - h/2;
-    if (label[0]) draw_text(x0, y0 - 22, label, 1.5f, INK_DIM);
+    if (label[0]) label_text(x0, y0 - 22, label, 1.5f, INK_DIM);
     int topdsp = G_DSP && cy < TOPBAR_H;
     uint32_t abg = topdsp ? DSP_BEZEL : PLATE_LINE;
     uint32_t afg = topdsp ? DSP_BG    : ACCENT_HI;

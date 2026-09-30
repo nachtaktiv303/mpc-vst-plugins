@@ -69,7 +69,7 @@ else
       esac
       OBJS=\"\$OBJS \$o\"
     done
-    gcc -O2 -Wall -Wextra -Wno-unused-parameter -fPIC -fvisibility=hidden -std=gnu11 -I'$PORT/build' -c /mv/wrapper/vst2_wrap.c -o '$PORT/build/vst2_wrap.o'
+    gcc -O2 -Wall -Wextra -Wno-unused-parameter -fPIC -fvisibility=hidden -std=gnu11 $CFLAGS -I'$PORT/build' -c /mv/wrapper/vst2_wrap.c -o '$PORT/build/vst2_wrap.o'
     if [ -n '$ADAPTER_SRC' ]; then
       gcc -O2 -Wall -Wextra -fPIC -fvisibility=hidden -std=gnu11 -c '$ADAPTER_SRC' -o '$PORT/build/adapter.o'
       OBJS=\"\$OBJS $PORT/build/adapter.o\"

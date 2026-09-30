@@ -76,6 +76,7 @@ CONTROL_KINDS = ("knob", "slider_v", "slider_h", "toggle", "button", "enum_h", "
 LOOK_DEFAULTS = {}         # top-level <group>_<attr>= lines (skin_assets.py), set by apply_theme()
 OPEN_SUFFIX = "__open"     # popup: hidden wrapper-only param, 1 while the option list is shown
 POP_ROW, POP_GAP, POP_PAD = 40, 2, 6
+POP_TXT_SCALE = 1.95   # popup option-list text scale (larger than enum segs' 1.6); open list widens to fit
 THEME_KEYS = {"bg": "PLATE", "ink": "INK", "ink_dim": "INK_DIM", "accent": "ACCENT", "accent_hi": "ACCENT_HI",
               "seg_active": "SEG_ON", "seg_inactive": "SEG_OFF", "seg_active_tx": "SEG_ON_TX",
               "lcd": "LCD", "line": "LINE", "btn_bg": "BTN_BG", "btn_text": "BTN_TEXT", "box": "BOX",
@@ -243,13 +244,16 @@ def popup_panel(w):
     else above, else from the top of the plugin area; columns when the options don't fit one."""
     n = len(w["options"])
     fx, fy, fw, fh = w["cx"] - w["w"] // 2, w["cy"] - w["h"] // 2, w["w"], w["h"]
+    # The open list may be wider than the closed field so the bigger POP_TXT_SCALE text isn't clipped
+    # on long options (e.g. "P: VIRTUAL ANALOG") -- the field itself stays w["w"].
+    colw = max(fw, max(text_width(o, POP_TXT_SCALE) for o in w["options"]) + 20)
     below, above = Y_OFF + H - (fy + fh + 4), fy - 4 - Y_OFF
     for cols in ([w["cols"]] if w.get("cols") else range(1, n + 1)):
         rows = -(-n // cols)
         ph = rows * (POP_ROW + POP_GAP) - POP_GAP + 2 * POP_PAD
         if ph <= max(below, above):
             break
-    pw = cols * fw + (cols - 1) * POP_GAP + 2 * POP_PAD
+    pw = cols * colw + (cols - 1) * POP_GAP + 2 * POP_PAD
     if ph <= below:
         py = fy + fh + 4
     elif ph <= above:
@@ -257,13 +261,18 @@ def popup_panel(w):
     else:
         py = Y_OFF   # nothing fits beside the field: the list covers it (a pick still closes it)
     px = max(0, min(fx, W - pw))
-    opts = [(px + POP_PAD + (o // rows) * (fw + POP_GAP), py + POP_PAD + (o % rows) * (POP_ROW + POP_GAP), fw, POP_ROW)
+    opts = [(px + POP_PAD + (o // rows) * (colw + POP_GAP), py + POP_PAD + (o % rows) * (POP_ROW + POP_GAP), colw, POP_ROW)
             for o in range(n)]
     return (px, py, pw, ph), opts
 
 
 def qlink_for_slot(slot):
-    return KNOB_QLINKS[slot % 8] + 2 * (slot // 8)
+    # MPC Live/One layout: 4 Q-Link encoders, banks stacked RowTopDown -- Q-Link 1..4 = bank 1,
+    # 5..8 = bank 2, etc. (matches stock One synth Q-Links.json). Sequential so each group of 4
+    # consecutive layout keys forms one bank the physical encoders reach together; press Q-Link
+    # to page to the next 4. (The old KNOB_QLINKS 13,9,5,1 order is the Force's 8-wide grid, which
+    # scattered 4 keys across 4 different One banks.)
+    return slot + 1
 
 
 # ---- geometry of each widget (shadow coords), mirroring render_conf_preview.c ----
@@ -271,7 +280,7 @@ def qlink_for_slot(slot):
 def seg_rects(w):
     n = len(w["options"])
     if w["kind"] == "enum_v":
-        sw, sh, gap = 135, 30, 2
+        sw, sh, gap = (w.get("sw") or 135), 30, 2
         y0 = w["cy"] - (n * (sh + gap)) // 2
         return [(w["cx"] - sw // 2, y0 + i * (sh + gap), sw, sh) for i in range(n)]
     sw, sh, gap = w.get("sw") or 117, 33, 2
@@ -286,7 +295,8 @@ def seg_rects(w):
     return out
 
 
-LABEL_SCALE = 1.15   # was 1.5: the baked bitmap font (font8x8.h) IS mixed-case (has a-z), but at
+LABEL_SCALE = 1.35   # enum group labels (SYNC/POLARITY/POLY/SLOPE) -- bumped from 1.15 for legibility.
+                      # was 1.5: the baked bitmap font (font8x8.h) IS mixed-case (has a-z), but at
                       # 1.5x its fixed monospace cell (10px/char * scale) read as too wide/shouty
                       # when paired with Title Case text -- see docs/NOTES.md. Only affects control
                       # name labels drawn via this function (shadow_art.c's own "text" command);
@@ -599,7 +609,7 @@ def build(layout_path, params, skin_dir, art_bin, png_from_ppm):
             if kind == "knob":
                 r = w["r"]
                 s, cw = 2 * r + 10, max(130, 2 * r + 10)   # value label width; LFO knobs sit 138 px apart
-                name_y, name_h = s // 2 + r + 2, 20
+                name_y, name_h = s // 2 + r + 8, 26
                 value_y = name_y + name_h + 2
                 ch = value_y + 26 + 6
                 radii.add((r, lid))
@@ -611,7 +621,7 @@ def build(layout_path, params, skin_dir, art_bin, png_from_ppm):
                     _sub("Knob", {"version": 5, "knobType": "FilmStrip", "filmStrip": "sh_knob_r%d%s.png" % (r, sfx),
                                   "numFrames": FRAMES - 1, "invert": False, "dragOrientation": "Vertical",
                                   "handleName": "Data"}, _bounds((cw - s) // 2, 0, s, s), "Knob"),
-                    _name_label(0, name_y, cw, name_h, 17.0, INK),
+                    _name_label(0, name_y, cw, name_h, 23.0, INK),
                     _sub("Label", {"version": 1, "textStyle": {"version": 1, "font": {"version": 1, "name": "Titillium Web",
                                                                                      "style": "SemiBold", "height": 22.0},
                                                                "colour": "ff" + INK_DIM,
@@ -662,20 +672,36 @@ def build(layout_path, params, skin_dir, art_bin, png_from_ppm):
                 img = "sh_%s_%dx%d%s" % (kind, sw_, sh_, sfx)
                 sliders.add((img, sw_, sh_, vert, lid))
                 sq = max(sw_, sh_)   # filmstrip frames are square (as stock); padding is transparent
-                cw = max(130, sq)
-                name_y, name_h = (sq - sh_) // 2 + sh_ + 2, 20
+                # vertical sliders: keep the component (and its focus/Q-Link box) snug around the thin fader
+                # + its Name/Value labels instead of the full square frame width, so the blue focus rectangle
+                # isn't ~5x the visible fader. The squared frame stays centred (Knob bounds x can go negative).
+                cw = max(76, sw_) if vert else max(130, sq)
+                name_y, name_h = (sq - sh_) // 2 + sh_ + 8, 26
                 value_y = name_y + name_h + 2
                 ch = value_y + 26 + 6
                 key = "shSlider_%s_%dx%d%s" % ("v" if vert else "h", sw_, sh_, sfx)
+                # vertical slider: hug the focus rectangle around the fader art (the sq x sq strip sits at y=0..sq),
+                # staying INSIDE the component bounds so all four edges render -- a negative y (earlier -18) put the
+                # top edge above the component and the MPC clipped it, so the box showed no top border. Kept above the
+                # Name/Value labels so it doesn't poke past the frame's bottom border. Horizontal keeps _focus.
+                foc = (_sub("Focus", {"version": 1, "backgroundColour": "14ffffff", "outlineColour": "ff" + ACCENT_HI,
+                                      "backgroundInset": 2.0, "outlineThickness": 2.0},
+                            _bounds(0, 2, cw, sq, visible="WhenFocussed"), "Focus")
+                       if vert else _focus(cw, ch))
                 defs.setdefault(key, _local(key, [_action("Mouse Down", "Q-Link"),
                                                   _action("Double Click", "Show Overlay", "knob overlay"),
                                                   _action("Enter Pressed", "Show Overlay", "knob overlay")], [
-                    _focus(cw, ch),
+                    foc,
+                    # numFrames = FRAMES (not FRAMES-1): the strip really holds FRAMES frames, so declaring
+                    # one fewer makes the device read frameHeight = imageH/(FRAMES-1) > the real frame height,
+                    # drifting the crop window ~1px/frame. On a rotary knob that sub-degree drift is invisible,
+                    # but on a slider the thumb's *position* drifts -- ~1 whole frame across a tall (h=150) fader,
+                    # so the dot no longer tracks the value. Exact frame count => frameHeight == sq, 1:1 mapping.
                     _sub("Knob", {"version": 5, "knobType": "FilmStrip", "filmStrip": img + ".png",
-                                  "numFrames": FRAMES - 1, "invert": False,
+                                  "numFrames": FRAMES, "invert": False,
                                   "dragOrientation": "Vertical" if vert else "Horizontal",
                                   "handleName": "Data"}, _bounds((cw - sq) // 2, 0, sq, sq), "Slider"),
-                    _name_label(0, name_y, cw, name_h, 17.0, INK),
+                    _name_label(0, name_y, cw, name_h, 23.0, INK),
                     _value_label(0, value_y, cw, 26, 22.0, INK_DIM)]))
                 kids.append(_placed(key, name, i, w["cx"] - cw // 2, w["cy"] - sq // 2, cw, ch))
             elif kind == "meter" and lk and lk.get("look") == "native":
@@ -727,7 +753,7 @@ def build(layout_path, params, skin_dir, art_bin, png_from_ppm):
                 x, y, rw, rh = w["cx"] - w["w"] // 2, w["cy"] - w["h"] // 2, w["w"], w["h"]
                 key = "shPopField_%dx%d" % (rw, rh)
                 defs.setdefault(key, _local(key, [_action("Mouse Down", "Toggle Switch"), _action("Enter Pressed", "Toggle Switch")],
-                                            [_focus(rw, rh), _value_label(8, 0, rw - 44, rh, 26.0, ACCENT, handle="Text")]))
+                                            [_focus(rw, rh), _value_label(8, 0, rw - 44, rh, 32.0, ACCENT, handle="Text")]))
                 kids.append(_placed(key, name, oi, x, y, rw, rh, extra={"Text": i}))
                 (px, py, pw, ph), orects = popup_panel(w)
                 shown = "IndexedEnabling/1/2/Parameter %d" % oi
@@ -743,7 +769,7 @@ def build(layout_path, params, skin_dir, art_bin, png_from_ppm):
                 for o, (ox, oy, ow, oh) in enumerate(orects):
                     img = "sh_popopt_%d_%s_%d" % (t, w["key"], o)
                     for state, fill, ink in (("on", SEG_ON, SEG_ON_TX), ("off", LCD, INK)):
-                        script += ["clear|" + LCD, "seg|%d|%d|%d|%d|%s|%s|%s" % (ox, oy, ow, oh, fill, ink, w["options"][o]),
+                        script += ["clear|" + LCD, "seg|%d|%d|%d|%d|%s|%s|%s|%s" % (ox, oy, ow, oh, fill, ink, w["options"][o], POP_TXT_SCALE),
                                    "crop|%s|%d|%d|%d|%d" % (art("%s_%s" % (img, state)), ox, oy, ow, oh)]
                     okey = "shPopOpt_%d_%s_%d" % (t, w["key"], o)
                     defs[okey] = _local(okey, [_action("Mouse Down", "Q-Link")],
@@ -820,14 +846,26 @@ def build(layout_path, params, skin_dir, art_bin, png_from_ppm):
         for sp, (title, keys) in enumerate(sets):
             if len(keys) > 16:
                 raise SystemExit("layout: qlinks %r has %d keys (max 16)" % (title, len(keys)))
+            # STOCK Q-Link scheme (reverse-engineered from AIR Hype's Q-Links.json/TUI.json on a real One):
+            # Bank Direction "Column"; control slot s -> bank = s//4 (which group of 4 = which screen COLUMN the
+            # One pages to), within = s%4 (which of the 4 physical knobs). Q-Link number = (3-within)*4 + bank + 1,
+            # i.e. the 13,9,5,1 / 14,10,6,2 ... column pattern the firmware expects. qlinkBoundsData is in NORMAL
+            # bank order: bank b's box = the rect of controls[4b:4b+4]. (Our old RowTopDown + reversed-bank hack
+            # bound the params right but drew the highlight on the wrong group -- this matches stock and fixes both.)
+            # NOTE: the control binding is cached at project/instance load; a bare re-insert refreshes TUI.json
+            # visuals (the box) but NOT the Q-Link->param map, so binding changes need a full project reload.
+            nbanks = max(1, -(-len(keys) // 4))
             ql = {"Q-Link %d" % (q + 1): -1 for q in range(16)}
             for s, k in enumerate(keys):
                 if k not in index:
                     raise SystemExit("layout: qlinks key %r is not a parameter" % k)
-                ql["Q-Link %d" % qlink_for_slot(s)] = index[k]
+                bank, within = divmod(s, 4)
+                ql["Q-Link %d" % ((3 - within) * 4 + bank + 1)] = index[k]
             comp = "%s|%s" % (tab["name"], title)
+            group_rects = [qlink_bounds(tab, keys[b:b + 4]) for b in range(0, len(keys), 4)]
             pages.append({"version": 3, "tabName": title, "fnKeyIndex": t, "fnKeySubIndex": sp,
-                          "qlinkBoundsData": [qlink_bounds(tab, keys)], "componentName": comp,
+                          "qlinkBoundsData": group_rects,
+                          "componentName": comp,
                           "initialSize": "0 0 %d %d" % (W, H), "scale": 1.0})
             qmap.append({"Tab": t + 1, "SubTab": sp + 1, "Bank Direction": "Column", "Q-Links": ql})
             defs[comp] = {"key": comp, "value": {
@@ -860,7 +898,7 @@ def build(layout_path, params, skin_dir, art_bin, png_from_ppm):
         im = Image.open(path).convert("RGB")
         dr = ImageDraw.Draw(im)
         for w in titles:
-            dr.text((w["x"] + 18 - ox, w["y"] + 8 - oy), w["title"], font=ImageFont.truetype(TITLE_FONT, 26),
+            dr.text((w["x"] + 18 - ox, w["y"] + 8 - oy), w["title"], font=ImageFont.truetype(TITLE_FONT, 30),
                     fill="#" + ACCENT_HI)
         for w in pops:   # the field's "opens a list" marker
             x, y = w["cx"] + w["w"] // 2 - 22 - ox, w["cy"] - oy
@@ -888,6 +926,7 @@ def square_strip(path, w, h):
 def qlink_bounds(tab, keys):
     """Rectangle around the controls a page's Q-Links drive (plugin coords)."""
     xs, ys = [], []
+    pxs, pys = [], []   # popup fields, only used as a fallback if a bank is nothing but popups
     for w in tab["widgets"]:
         if w["kind"] == "list":
             for (x, y, tw, th), k in zip(list_tiles(w), list_keys(w)):
@@ -897,11 +936,22 @@ def qlink_bounds(tab, keys):
             continue
         if w.get("key") not in keys:
             continue
-        if w["kind"] in ("slider_v", "slider_h"):
+        if w["kind"] == "slider_v":   # thin fader: hug it (+ its Name/Value labels below), don't pad to 130
+            xs += [w["cx"] - 38, w["cx"] + 38]
+            ys += [w["cy"] - w["h"] // 2 - 4, w["cy"] + w["h"] // 2 + 52]
+            continue
+        if w["kind"] == "slider_h":
             xs += [w["cx"] - max(65, w["w"] // 2), w["cx"] + max(65, w["w"] // 2)]
             ys += [w["cy"] - w["h"] // 2, w["cy"] + w["h"] // 2 + 56]
             continue
-        if w["kind"] in ("readout", "stepper", "menu", "popup"):
+        if w["kind"] == "popup":
+            # skip: the MPC draws the (orange) Q-Link highlight ABOVE all skin content, so when a popup's
+            # option list opens it sits under the rect. Leaving the popup field out of the bank rect keeps the
+            # highlight off the open list. The other bank controls (knobs) still carry the visible highlight.
+            pxs += [w["cx"] - w["w"] // 2, w["cx"] + w["w"] // 2]
+            pys += [w["cy"] - w["h"] // 2 - 26, w["cy"] + w["h"] // 2]
+            continue
+        if w["kind"] in ("readout", "stepper", "menu"):
             xs += [w["cx"] - w["w"] // 2, w["cx"] + w["w"] // 2]
             ys += [w["cy"] - w["h"] // 2 - 26, w["cy"] + w["h"] // 2]
             continue
@@ -918,6 +968,8 @@ def qlink_bounds(tab, keys):
             for x, y, sw, sh in seg_rects(w):
                 xs += [x, x + sw]
                 ys += [y - 40, y + sh]
+    if not xs:
+        xs, ys = pxs, pys   # bank was all popups -- fall back to their fields rather than the whole page
     if not xs:
         return "0 0 %d %d" % (W, H)
     x0, y0 = max(0, min(xs) - 6), max(0, min(ys) - Y_OFF - 6)

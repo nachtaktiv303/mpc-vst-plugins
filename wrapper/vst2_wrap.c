@@ -79,6 +79,7 @@ typedef struct {
     int pos;                 /* read position in block; DSP_BLOCK = empty */
     double bpm;
     volatile char release[NPARAMS];  /* momentary params to report back to 0 */
+    volatile char notify[NPARAMS];   /* params whose display to re-poll (audioMasterAutomate), see setParameter */
     volatile char need_update_display;  /* deferred audioMasterUpdateDisplay -- see setParameter() */
     float open[NPARAMS];     /* popup "open" flags (popup.h): kept here, never sent to the DSP or saved */
     char chunk[8192];
@@ -169,6 +170,10 @@ static void setParameter(AEffect *e, int32_t i, float n) {
     if (PARAMS[i].momentary && n > 0.5f) w->release[i] = 1;
     if (!nudge) popup_picked(w->open, w->release, i);   /* a list pick closes it; a Q-Link nudge doesn't */
     w->need_update_display = 1;   /* deferred to processReplacing(), see the step_target branch above */
+    /* A param whose displayed VALUE depends on this one (p->notify) must be re-polled: MPC caches
+     * value displays and updateDisplay above only re-reads Name labels, not another param's value
+     * text. Flag it for an audioMasterAutomate in processReplacing (can't re-enter the host here). */
+    if (p->notify >= 0) w->notify[p->notify] = 1;
 }
 
 static float getParameter(AEffect *e, int32_t i) { return get_norm(e->object, i); }
@@ -207,6 +212,10 @@ static void run_block(AEffect *e, float **out, int32_t n, int accumulate) {
      * setParameter, so the host is not re-entered from its own call. */
     for (int i = 0; i < NPARAMS; i++)
         if (w->release[i]) { w->release[i] = 0; w->master(&w->fx, audioMasterAutomate, i, 0, 0, 0.0f); }
+    /* Re-poll a dependent param's displayed value: report its CURRENT (unchanged) value to the host,
+     * which makes MPC re-read its effGetParamDisplay text (e.g. delayTime -> "500 ms (1/4)" once synced). */
+    for (int i = 0; i < NPARAMS; i++)
+        if (w->notify[i]) { w->notify[i] = 0; w->master(&w->fx, audioMasterAutomate, i, 0, 0, get_norm(w, i)); }
     if (w->need_update_display) {
         w->need_update_display = 0;
         w->master(&w->fx, audioMasterUpdateDisplay, 0, 0, 0, 0.0f);
@@ -239,7 +248,19 @@ static intptr_t dispatcher(AEffect *e, int32_t op, int32_t idx, intptr_t v, void
     case effGetVstVersion: return 2400;
     case effCanBeAutomated: return idx >= 0 && idx < NPARAMS;
     case effGetParamName:
-        if (idx >= 0 && idx < NPARAMS) copy_str(p, PARAMS[idx].name, 32);
+        if (idx >= 0 && idx < NPARAMS) {
+            const param_t *pp = &PARAMS[idx];
+            const char *nm = pp->name;
+            /* alt_name: flip to the alternate label while the referenced param's current option
+             * index is >= alt_ge (e.g. Rings STRUCTURE -> Plaits HARMONICS when model >= 6).
+             * setParameter already flags need_update_display, so MPC re-polls this on a change. */
+            if (pp->alt_name && pp->alt_ref >= 0 && pp->alt_ref < NPARAMS) {
+                const param_t *rp = &PARAMS[pp->alt_ref];
+                int oi = (int)lroundf(clamp01(get_norm(w, pp->alt_ref)) * (rp->nopts > 1 ? rp->nopts - 1 : 0));
+                if (oi >= pp->alt_ge) nm = pp->alt_name;
+            }
+            copy_str(p, nm, 32);
+        }
         return 1;
     case effGetParamLabel:
         if (idx >= 0 && idx < NPARAMS) copy_str(p, PARAMS[idx].unit, 8);
@@ -253,6 +274,7 @@ static intptr_t dispatcher(AEffect *e, int32_t op, int32_t idx, intptr_t v, void
             copy_str(p, pp->opts[k], 24);
         } else if (g_api->get_param(w->dsp, pp->key, buf, sizeof buf) > 0) {
             if (pp->string_display) copy_str(p, buf, 24);   /* real text (a name, a status), not a number */
+            else if (pp->pct_display) snprintf(p, 24, "%.0f", atof(buf) * 100.0);  /* 0..1 shown as 0..100 */
             else snprintf(p, 24, "%.*f", (pp->int_display || fabs(pp->max - pp->min) > 20) ? 0 : 1, atof(buf));
         }
         return 1;
