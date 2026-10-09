@@ -126,14 +126,19 @@ def gen_params(cfg, params, out):
               "#define PLUG_NAME %s" % c_str(cfg["name"]), "#define PLUG_VENDOR %s" % c_str(cfg["vendor"]),
               "#define PLUG_UID 0x%08x /* '%s' */" % (int.from_bytes(cfg["uid"].encode(), "big"), cfg["uid"]),
               "#define PLUG_VERSION %d" % cfg.get("version", 1000)]
+    if cfg.get("effect"):
+        lines.append("#define PLUG_IS_EFFECT 1")  # audio insert: numInputs=2, no isSynth (see vst2_wrap.c)
     lines += ["#define %s %s" % (k, v) for k, v in cfg.get("defines", {}).items()]
     open(out, "w").write("\n".join(lines) + "\n")
 
 
 def entry(cfg):
-    return ('<PLUGIN name="{n}" descriptiveName="{n}" format="VST" category="Synth" manufacturer="{v}" version="1.0" '
-            'file="/sdcard/vst/{so}" uid="{u:x}" isInstrument="1" fileTime="0" infoUpdateTime="0" numInputs="0" '
+    fx = bool(cfg.get("effect"))
+    return ('<PLUGIN name="{n}" descriptiveName="{n}" format="VST" category="{cat}" manufacturer="{v}" version="1.0" '
+            'file="/sdcard/vst/{so}" uid="{u:x}" isInstrument="{inst}" fileTime="0" infoUpdateTime="0" numInputs="{ni}" '
             'numOutputs="2" isShell="0"/>').format(n=cfg["name"], v=cfg["vendor"], so=cfg["so"],
+                                                  cat="Effect" if fx else "Synth", inst=0 if fx else 1,
+                                                  ni=2 if fx else 0,
                                                   u=int.from_bytes(cfg["uid"].encode(), "big"))
 
 

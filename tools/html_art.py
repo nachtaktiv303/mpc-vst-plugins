@@ -54,6 +54,9 @@ DEFS = """<defs>
 <radialGradient id="metal-radial" cx="0.4" cy="0.35" r="0.75">
  <stop offset="0" stop-color="#f6f6f4"/><stop offset="0.55" stop-color="#b9b9b6"/><stop offset="1" stop-color="#6c6c69"/>
 </radialGradient>
+<radialGradient id="flutebump" cx="0.36" cy="0.3" r="0.8">
+ <stop offset="0" stop-color="#dcdcd8"/><stop offset="0.55" stop-color="#9a9a96"/><stop offset="1" stop-color="#55554f"/>
+</radialGradient>
 <linearGradient id="metal-linear" x1="0" y1="0" x2="1" y2="1">
  <stop offset="0" stop-color="#e8e8e6"/><stop offset="0.5" stop-color="#8e8e8b"/><stop offset="1" stop-color="#d6d6d3"/>
 </linearGradient>
@@ -80,6 +83,28 @@ def knob_moog(cx, cy, r, a):
                   % (cx, cy - R * 0.55, cx, cy - R * 0.8, max(2, r / 11))) +
             '<circle class="look-cap" cx="%g" cy="%g" r="%g"/>' % (cx, cy, R * 0.5) +
             '<circle class="knob-sheen" cx="%g" cy="%g" r="%g"/>' % (cx, cy, R * 0.84))
+
+
+def knob_moogk(cx, cy, r, a):
+    """Moog-style: dark body with a ring of COARSE half-round milled scallops (a light/dark pattern),
+    a round metal cap and a short pointer tick."""
+    R = r + 3
+    N = 13                       # coarse scallops (few, rounded notches -- the real Moog milled edge)
+    rr = R * 0.9                 # scallop centres sit near the rim
+    s = (2 * math.pi * rr / N) * 0.6
+    o = '<circle class="look-skirt" cx="%g" cy="%g" r="%g"/>' % (cx, cy, R)
+    bumps = ""
+    for k in range(N):
+        th = 2 * math.pi * k / N
+        bx, by = cx + rr * math.sin(th), cy - rr * math.cos(th)
+        bumps += '<circle class="look-flute" cx="%g" cy="%g" r="%g"/>' % (bx, by, s)
+    o += _turn(a, cx, cy, bumps)
+    cap = R * 0.6                 # round metal cap on top
+    o += '<circle class="look-cap" cx="%g" cy="%g" r="%g"/>' % (cx, cy, cap)
+    o += '<circle class="knob-sheen" cx="%g" cy="%g" r="%g"/>' % (cx, cy, cap)
+    o += _turn(a, cx, cy, '<line class="look-notch" x1="%g" y1="%g" x2="%g" y2="%g" style="stroke-width:%g"/>'
+               % (cx, cy - cap * 0.62, cx, cy - cap * 0.98, max(2, r / 10)))
+    return o
 
 
 def knob_chicken(cx, cy, r, a):
@@ -112,7 +137,7 @@ def knob_cap(cx, cy, r, a):
                   % (cx, cy - R * 0.25, cx, cy - R * 0.7, max(2, r / 10))))
 
 
-KNOB_LOOKS = {"moog": knob_moog, "chicken": knob_chicken, "metal": knob_metal, "cap": knob_cap}
+KNOB_LOOKS = {"moog": knob_moog, "moogk": knob_moogk, "chicken": knob_chicken, "metal": knob_metal, "cap": knob_cap}
 
 
 def fader_track(x, y, w, h, vert, th):

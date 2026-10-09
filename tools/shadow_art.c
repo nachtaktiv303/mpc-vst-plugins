@@ -13,7 +13,8 @@
  *   text|cx|y|scale|RRGGBB|TEXT       centred text (baked 9x9 font; uppercase only)
  *   knob|cx|cy|r|pct                  knob body: ring, face, pointer dot (no label/value)
  *   pill|cx|cy|on                     toggle pill (no label)
- *   button|cx|cy|RRGGBB|LABEL         push button
+ *   button|cx|cy|RRGGBB|LABEL         push button (auto-sized to the label)
+ *   button|cx|cy|RRGGBB|LABEL|w|h     push button, explicit size (0 = auto on that axis)
  *   seg|x|y|w|h|RRGGBB|RRGGBB|LABEL   one enum segment: fill colour, text colour
  *   crop|out.ppm|x|y|w|h              write a region of the canvas
  *   strip|out.ppm|r|frames|RRGGBB     vertical knob filmstrip (frames x (2r+10)^2) on a bg colour
@@ -197,6 +198,7 @@ int main(void) {
         else if (!strcmp(op, "knob") && n == 5) knob_body(atoi(a[1]), atoi(a[2]), atoi(a[3]), atoi(a[4]));
         else if (!strcmp(op, "pill") && n == 4) pill(atoi(a[1]), atoi(a[2]), atoi(a[3]));
         else if (!strcmp(op, "button") && n == 5) widget_button(atoi(a[1]), atoi(a[2]), a[4], HEX(a[3]));
+        else if (!strcmp(op, "button") && n == 7) widget_button_sz(atoi(a[1]), atoi(a[2]), a[4], HEX(a[3]), atoi(a[5]), atoi(a[6]));
         else if (!strcmp(op, "seg") && (n == 8 || n == 9)) {
             int x = atoi(a[1]), y = atoi(a[2]), w = atoi(a[3]), h = atoi(a[4]);
             float sc = (n == 9) ? (float)atof(a[8]) : 1.6f;   /* optional per-seg scale: popup options pass a larger one */

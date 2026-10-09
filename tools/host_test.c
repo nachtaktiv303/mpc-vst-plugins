@@ -80,11 +80,13 @@ int main(void) {
             if (!strcmp(PARAMS[i].key, "delayTime")) dt = i;
         }
         if (ds >= 0 && dd >= 0 && dt >= 0) {
-            a->setP(a, dd, 2.0f / (PARAMS[dd].nopts - 1));   /* 1/4 */
+            int idx = PARAMS[dd].nopts > 2 ? 2 : PARAMS[dd].nopts - 1;   /* some division */
+            const char *lbl = PARAMS[dd].opts[idx];
+            a->setP(a, dd, (float)idx / (PARAMS[dd].nopts - 1));
             a->setP(a, ds, 1.0f);                            /* Sync */
             run(a, 1);                                       /* processReplacing -> update_tempo (120 BPM) */
             a->d(a, 7, dt, 0, d, 0);
-            CHECK(strstr(d, "1/4") && strstr(d, "500"), "delay sync 1/4 @120 -> \"%s\" (want 1/4, 500 ms)", d);
+            CHECK(strstr(d, lbl) && strstr(d, "ms"), "delay sync %s @120 -> \"%s\" (want %s, ms)", lbl, d, lbl);
         }
     }
 
@@ -101,6 +103,16 @@ int main(void) {
         ((void (*)(AEffect *, float **, float **, int32_t))b->p)(b, 0, o1, 128);
         for (int i = 0; i < 128; i++) kept &= fabsf(L1[i] - 1.0f) < 0.01f && fabsf(R1[i] - 1.0f) < 0.01f;
         CHECK(kept, "process() accumulates into the output instead of overwriting it");
+    }
+    if (a->ni == 2) {   /* effect port: prove audio flows in -> out through the wrapper's input path */
+        float IL[128], IR[128], OL[128], OR[128], *ip[2] = {IL, IR}, *op[2] = {OL, OR};
+        double ein = 0, eout = 0;
+        for (int k = 0; k < 8; k++) {   /* several blocks to clear the one-block input latency */
+            for (int i = 0; i < 128; i++) IL[i] = IR[i] = 0.8f * sinf(2.0f * 3.14159265f * 440.0f * (k * 128 + i) / 44100.0f);
+            a->pr(a, ip, op, 128);
+            for (int i = 0; i < 128; i++) { ein += IL[i] * IL[i]; eout += OL[i] * OL[i]; }
+        }
+        CHECK(eout > 1e-3, "effect passes input to output (in rms %.3f, out rms %.3f)", sqrt(ein / 1024), sqrt(eout / 1024));
     }
     void *ch = 0; intptr_t n = a->d(a, 23, 0, 0, &ch, 0);
     if (n > 0) {

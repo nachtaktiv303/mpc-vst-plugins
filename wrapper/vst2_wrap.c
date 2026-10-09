@@ -23,6 +23,10 @@
 #define MODULE_DIR NULL /* set via vst.json "defines" for a DSP that reads its own files
                           * (ROMs, etc.) from "<module_dir>/..." (see jv880's create_instance) */
 #endif
+#ifndef PLUG_IS_EFFECT
+#define PLUG_IS_EFFECT 0 /* 1 (from vst.json "effect": true): audio insert -- numInputs=2, no isSynth,
+                          * category Effect, and the engine's process(in,out) drives the DSP. */
+#endif
 
 #include "engine.h"
 #include "popup.h"
@@ -76,6 +80,7 @@ typedef struct {
     audioMasterCallback master;
     void *dsp;
     int16_t block[DSP_BLOCK * 2];
+    int16_t inblock[DSP_BLOCK * 2];  /* effects: staged input, processed a block at a time */
     int pos;                 /* read position in block; DSP_BLOCK = empty */
     double bpm;
     volatile char release[NPARAMS];  /* momentary params to report back to 0 */
@@ -191,6 +196,7 @@ static void update_tempo(wrap_t *w) {
 
 /* accumulate=1 is VST2's legacy process(), which must ADD to the output buffers; hosts here call
  * processReplacing, but a NULL e->process would crash any host that tried the old call. */
+#if !PLUG_IS_EFFECT
 static void render_frames(wrap_t *w, float **out, int32_t n, int accumulate) {
     for (int32_t i = 0; i < n; i++) {
         if (w->pos >= DSP_BLOCK) {
@@ -203,8 +209,31 @@ static void render_frames(wrap_t *w, float **out, int32_t n, int accumulate) {
         w->pos++;
     }
 }
+#endif
 
-static void run_block(AEffect *e, float **out, int32_t n, int accumulate) {
+#if PLUG_IS_EFFECT
+static int16_t float_to_s16(float x) {
+    x *= 32767.0f;
+    return x < -32768.0f ? -32768 : x > 32767.0f ? 32767 : (int16_t)x;
+}
+/* Effect path: stage the host's input a block at a time and emit the previously processed block.
+ * One-block (128-sample) latency; w->block starts zeroed (calloc) so the first block is silence. */
+static void render_frames_fx(wrap_t *w, float **in, float **out, int32_t n, int accumulate) {
+    for (int32_t i = 0; i < n; i++) {
+        w->inblock[w->pos * 2]     = in ? float_to_s16(in[0][i]) : 0;
+        w->inblock[w->pos * 2 + 1] = in ? float_to_s16(in[1][i]) : 0;
+        float l = w->block[w->pos * 2] * (1.0f / 32768.0f), r = w->block[w->pos * 2 + 1] * (1.0f / 32768.0f);
+        if (accumulate) { out[0][i] += l; out[1][i] += r; }
+        else { out[0][i] = l; out[1][i] = r; }
+        if (++w->pos >= DSP_BLOCK) {
+            g_api->process(w->dsp, w->inblock, w->block, DSP_BLOCK);
+            w->pos = 0;
+        }
+    }
+}
+#endif
+
+static void run_block(AEffect *e, float **in, float **out, int32_t n, int accumulate) {
     wrap_t *w = e->object;
     if (HAS_LFO_BPM) update_tempo(w);
     /* A trigger param (e.g. Generate) fired: tell the host it is back to 0 so
@@ -220,11 +249,16 @@ static void run_block(AEffect *e, float **out, int32_t n, int accumulate) {
         w->need_update_display = 0;
         w->master(&w->fx, audioMasterUpdateDisplay, 0, 0, 0, 0.0f);
     }
+#if PLUG_IS_EFFECT
+    render_frames_fx(w, in, out, n, accumulate);
+#else
+    (void)in;
     render_frames(w, out, n, accumulate);
+#endif
 }
 
-static void processReplacing(AEffect *e, float **in, float **out, int32_t n) { (void)in; run_block(e, out, n, 0); }
-static void process(AEffect *e, float **in, float **out, int32_t n) { (void)in; run_block(e, out, n, 1); }
+static void processReplacing(AEffect *e, float **in, float **out, int32_t n) { run_block(e, in, out, n, 0); }
+static void process(AEffect *e, float **in, float **out, int32_t n) { run_block(e, in, out, n, 1); }
 
 static void copy_str(void *dst, const char *src, size_t max) {
     strncpy(dst, src, max - 1);
@@ -240,7 +274,7 @@ static intptr_t dispatcher(AEffect *e, int32_t op, int32_t idx, intptr_t v, void
         g_api->destroy(w->dsp);
         free(w);
         return 1;
-    case effGetPlugCategory: return 2; /* kPlugCategSynth */
+    case effGetPlugCategory: return PLUG_IS_EFFECT ? 1 : 2; /* 1 kPlugCategEffect, 2 kPlugCategSynth */
     case effGetEffectName:
     case effGetProductString: copy_str(p, PLUG_NAME, 32); return 1;
     case effGetVendorString: copy_str(p, PLUG_VENDOR, 32); return 1;
@@ -273,7 +307,15 @@ static intptr_t dispatcher(AEffect *e, int32_t op, int32_t idx, intptr_t v, void
             int k = (int)lroundf(get_norm(w, idx) * (pp->nopts - 1));
             copy_str(p, pp->opts[k], 24);
         } else if (g_api->get_param(w->dsp, pp->key, buf, sizeof buf) > 0) {
-            if (pp->string_display) copy_str(p, buf, 24);   /* real text (a name, a status), not a number */
+            if (pp->string_display) {
+                /* Optional "<number>\x1f<text>" form: the leading number drives the knob position
+                 * (via str_to_norm's atof, which stops at the separator), while only <text> is shown.
+                 * Lets a param report its real knob value yet display an arbitrary label (e.g. a note
+                 * division) without the display text being mis-read as the position. No separator =
+                 * the whole string is the display, as before. */
+                const char *sep = strchr(buf, '\x1f');
+                copy_str(p, sep ? sep + 1 : buf, 24);
+            }
             else if (pp->pct_display) snprintf(p, 24, "%.0f", atof(buf) * 100.0);  /* 0..1 shown as 0..100 */
             else snprintf(p, 24, "%.*f", (pp->int_display || fabs(pp->max - pp->min) > 20) ? 0 : 1, atof(buf));
         }
@@ -317,7 +359,7 @@ __attribute__((visibility("default"))) AEffect *VSTPluginMain(audioMasterCallbac
     w->dsp = g_api->create(MODULE_DIR);
     if (!w->dsp) { free(w); return NULL; }
     w->master = master;
-    w->pos = DSP_BLOCK;
+    w->pos = PLUG_IS_EFFECT ? 0 : DSP_BLOCK;  /* effect: fill a block of input before first process */
     AEffect *e = &w->fx;
     e->magic = 0x56737450; /* 'VstP' */
     e->dispatcher = dispatcher;
@@ -326,9 +368,10 @@ __attribute__((visibility("default"))) AEffect *VSTPluginMain(audioMasterCallbac
     e->getParameter = getParameter;
     e->processReplacing = processReplacing;
     e->numParams = NPARAMS;
-    e->numInputs = 0;
+    e->numInputs = PLUG_IS_EFFECT ? 2 : 0;
     e->numOutputs = 2;
-    e->flags = effFlagsCanReplacing | effFlagsIsSynth | effFlagsProgramChunks;
+    e->flags = effFlagsCanReplacing | effFlagsProgramChunks | (PLUG_IS_EFFECT ? 0 : effFlagsIsSynth);
+    e->initialDelay = PLUG_IS_EFFECT ? DSP_BLOCK : 0;  /* one-block latency of render_frames_fx */
     e->uniqueID = PLUG_UID;
     e->version = PLUG_VERSION;
     e->object = w;

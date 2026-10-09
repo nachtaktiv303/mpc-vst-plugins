@@ -87,6 +87,7 @@ text { font-family: var(--font); font-weight: 600; }
 /* knob look=moog */
 .look-skirt { fill: #0d0d0d; }
 .look-knurl { fill: none; stroke: #343434; }
+.look-flute { fill: url(#flutebump); }   /* half-round milled scallop, lit top-left (moogk) */
 .look-body { fill: #171717; stroke: #050505; stroke-width: 1.5; filter: var(--shadow); }
 .look-cap { fill: url(#metal-radial); stroke: #2a2a2a; stroke-width: 1; }
 .look-line { stroke: #f4f4f2; stroke-linecap: round; fill: none; }

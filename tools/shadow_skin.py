@@ -69,6 +69,7 @@ SEG_ON, SEG_OFF, SEG_ON_TX = "f2f1ee", "050403", "1c1a17"
 LCD, LINE, BTN_BG, BTN_TEXT, BOX = "1a120d", "2a2823", "", "fdf3ea", "1f1f1f"
 DISPLAY_INK = "cdeb63"   # theme_display_ink: live-text colour over a dotreadout/dotstepper (see readout/stepper below)
 TD3 = False   # style=td3: frames are filled boxes, so widget crops sit on BOX, not the page bg
+HIDE_QLINK_BOUNDS = False   # hide_qlink_bounds=1: don't draw MPC's Q-Link group rectangles on the plugin screen
 FRAMES = 128               # filmstrip frames (stock strips: 128, numFrames 127)
 KNOB_QLINKS = [13, 9, 5, 1, 14, 10, 6, 2]
 CONTROL_KINDS = ("knob", "slider_v", "slider_h", "toggle", "button", "enum_h", "enum_v", "readout", "stepper", "list", "menu",
@@ -159,6 +160,9 @@ def apply_theme(top):
     for line in top:
         if line.strip() == "style=td3":
             g["TD3"] = True
+        if line.startswith("hide_qlink_bounds="):
+            g["HIDE_QLINK_BOUNDS"] = line.partition("=")[2].strip() in ("1", "true", "yes")
+            continue
         if line.startswith("font_label="):
             g["FONT_LABEL_PATH"] = line[len("font_label="):].strip()
             continue
@@ -330,6 +334,10 @@ def button_rect(w, base_dir="."):
     bw, bh = text_width(w["label"]) + 36, 39
     if TD3:   # widget_button(): +24 wide, 48 tall, plus a 2 px outline ring
         bw, bh = bw + 24 + 4, 48 + 4
+    if w.get("w"):   # explicit size from `button ... w= h=` (0/absent = auto on that axis)
+        bw = int(w["w"])
+    if w.get("h"):
+        bh = int(w["h"])
     return (w["cx"] - bw // 2, w["cy"] - bh // 2, bw, bh)
 
 
@@ -406,7 +414,7 @@ def _local(key, actions, children):
     return {"key": key, "value": {"version": 4, "actions": actions,
                                   "backgroundData": {"version": 1, "focussed": clear, "unfocussed": clear},
                                   "ignoreMousePresses": False, "disableCoarseDataWheel": False, "repeats": 1,
-                                  "hideQLinkBounds": False, "componentsData": children}}
+                                  "hideQLinkBounds": HIDE_QLINK_BOUNDS, "componentsData": children}}
 
 
 def _focus(w, h):
@@ -659,7 +667,7 @@ def build(layout_path, params, skin_dir, art_bin, png_from_ppm):
                 base = w.get("color") or BTN_BG or ACCENT
                 for state, col in (("off", base), ("on", shade(base, 1.35))):
                     draw = ("lbtn|%d|%d|%d|%d|%d|%s|%s" % (x, y, bw, bh, state == "on", w.get("label", ""), skin_assets.encode(lk))
-                            if lk else "button|%d|%d|%s|%s" % (w["cx"], w["cy"], col, w["label"]))
+                            if lk else "button|%d|%d|%s|%s|%d|%d" % (w["cx"], w["cy"], col, w["label"], bw, bh))
                     script += ["clear|" + under(), draw,
                                "crop|%s|%d|%d|%d|%d" % (art("%s_%s" % (img, state)), x, y, bw, bh)]
                 key = "shTrig_%s_%s%s" % (w["key"], slug(w.get("label", "")), sfx)
@@ -873,7 +881,7 @@ def build(layout_path, params, skin_dir, art_bin, png_from_ppm):
                 "backgroundData": {"version": 1, "focussed": {"version": 1, "colour": "ff" + PLATE, "image": ""},
                                    "unfocussed": {"version": 1, "colour": "ff" + PLATE, "image": ""}},
                 "ignoreMousePresses": False, "disableCoarseDataWheel": False, "repeats": 1,
-                "hideQLinkBounds": False, "componentsData": kids}}
+                "hideQLinkBounds": HIDE_QLINK_BOUNDS, "componentsData": kids}}
 
     for img, sw_, sh_, vert, lid in sorted(sliders):
         if lid:

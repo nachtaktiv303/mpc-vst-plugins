@@ -433,10 +433,14 @@ static void widget_toggle(int cx, int cy, const char *label, int on) {
  * mirrors force_shadow.c's own ui_widget_t.btn_color/has_btn_color
  * (`color=` on a `button` line) -- one button (e.g. SEARCH) can stand
  * out from the page's usual button color without a second theme. */
-static void widget_button(int cx, int cy, const char *label, uint32_t color_override) {
+/* w_ovr/h_ovr: explicit button size from a layout `button ... w= h=` line (0 = auto-size to the
+ * label, the historical behaviour). Lets a port make a trigger (e.g. THROW) bigger than its text. */
+static void widget_button_sz(int cx, int cy, const char *label, uint32_t color_override, int w_ovr, int h_ovr) {
     int w = label_width(label, 1.15f) + 36, h = 39;   /* scale was 1.5f, see frame_box()'s comment */
+    if (G_TD3) { w += 24; h = 48; }
+    if (w_ovr > 0) w = w_ovr;
+    if (h_ovr > 0) h = h_ovr;
     if (G_TD3) {
-        w += 24; h = 48;
         uint32_t bg = color_override ? color_override : TD3_BTN_BG;
         fill_rr(cx - w/2 - 2, cy - h/2 - 2, w + 4, h + 4, 10, PLATE_LINE);
         fill_rr(cx - w/2, cy - h/2, w, h, 8, bg);
@@ -445,6 +449,9 @@ static void widget_button(int cx, int cy, const char *label, uint32_t color_over
     }
     fill_rect(cx - w/2, cy - h/2, w, h, color_override ? color_override : ACCENT);
     label_text_c(cx, cy - 5, label, 1.15f, 0xfdf3ea);
+}
+static void widget_button(int cx, int cy, const char *label, uint32_t color_override) {
+    widget_button_sz(cx, cy, label, color_override, 0, 0);
 }
 static void widget_enum_h(int cx, int cy, const char *label, const char **opts, int n, int active, int sw_override) {
     int seg_w = sw_override > 0 ? sw_override : 117, seg_h = 33, gap = 2;
@@ -864,10 +871,11 @@ static void render_tab(int tab_idx) {
 
         } else if (!strcmp(kind, "button")) {
             int cx = kv_int(ln, "cx", 0), cy = kv_int(ln, "cy", 0);
+            int bw = kv_int(ln, "w", 0), bh = kv_int(ln, "h", 0);
             char label[64] = {0}; kv_str(ln, "label", label, sizeof(label));
             char colstr[16] = {0}; kv_str(ln, "color", colstr, sizeof(colstr));
             uint32_t color = colstr[0] ? (uint32_t)strtoul(colstr, NULL, 16) : 0;
-            widget_button(cx, cy, label, color);
+            widget_button_sz(cx, cy, label, color, bw, bh);
 
         } else if (!strcmp(kind, "toggle")) {
             int cx = kv_int(ln, "cx", 0), cy = kv_int(ln, "cy", 0);
