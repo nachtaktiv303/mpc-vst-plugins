@@ -1,0 +1,5 @@
+build/
+*.so
+*.inplace-bak
+__pycache__/
+.DS_Store

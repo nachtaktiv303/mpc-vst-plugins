@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 500" preserveAspectRatio="none">
+  <!-- engraved vertical seam between control groups: dark groove with faint bevel highlights -->
+  <rect x="3.2" y="0" width="1.6" height="500" fill="#061009"/>
+  <rect x="2.4" y="0" width="0.8" height="500" fill="#4a7a5c" opacity="0.55"/>
+  <rect x="4.8" y="0" width="0.8" height="500" fill="#4a7a5c" opacity="0.55"/>
+</svg>

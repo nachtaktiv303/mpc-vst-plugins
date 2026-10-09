@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 628" preserveAspectRatio="none">
+  <defs>
+    <linearGradient id="sil" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e0e2dc"/>
+      <stop offset="0.5" stop-color="#cccec8"/>
+      <stop offset="1" stop-color="#b6b8b2"/>
+    </linearGradient>
+    <linearGradient id="silb" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#b6b8b2"/>
+      <stop offset="0.5" stop-color="#cccec8"/>
+      <stop offset="1" stop-color="#d4d6d0"/>
+    </linearGradient>
+  </defs>
+  <!-- green centre faceplate -->
+  <rect width="1280" height="628" fill="#2d4626"/>
+  <!-- top silver strip -->
+  <rect x="0" y="0" width="1280" height="72" fill="url(#sil)"/>
+  <line x1="0" y1="72" x2="1280" y2="72" stroke="#7f817a" stroke-width="1.5"/>
+  <line x1="0" y1="73.5" x2="1280" y2="73.5" stroke="#ffffff" stroke-opacity="0.45" stroke-width="1"/>
+  <!-- bottom silver strip -->
+  <rect x="0" y="572" width="1280" height="56" fill="url(#silb)"/>
+  <line x1="0" y1="572" x2="1280" y2="572" stroke="#7f817a" stroke-width="1.5"/>
+  <line x1="0" y1="570.5" x2="1280" y2="570.5" stroke="#ffffff" stroke-opacity="0.35" stroke-width="1"/>
+</svg>

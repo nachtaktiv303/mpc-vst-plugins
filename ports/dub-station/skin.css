@@ -1,0 +1,52 @@
+/* Dub Station — Roland RE-201 look (browser renderer, tools/html_art.py).
+ * Brushed-silver strips top/bottom over a green centre faceplate (art/chassis.svg); green section panels
+ * (no heavy frame, no screws), one black field per page (art/panel_*.svg) with the VU inside OUTPUT;
+ * black Moog knobs. Live MPC knob labels stay MPC's own Titillium. */
+
+:root {
+  --title-size: 26px;
+  --label-size: 16px;
+  --radius: 10px;
+  --sheen: 0.06;
+  --shadow: drop-shadow(0 2px 5px rgba(0,0,0,0.35));
+}
+
+/* no section panels at all -- the green sections are just the flat green faceplate; only the title shows.
+ * (The black fields are flat art rectangles, art/panel_*.svg, i.e. a different background, not a panel.) */
+.frame-border { fill: none; stroke: none; filter: none; }
+.frame-rule { display: none; }
+.frame-title {
+  font-family: "Liberation Sans Narrow", sans-serif;
+  fill: #eef1ec;
+  font-weight: 700;
+  font-size: 26px;
+  letter-spacing: 0.2em;
+  transform: translateY(24px);   /* sit lower, not glued to the top edge */
+}
+.text {
+  font-family: "Liberation Sans Narrow", sans-serif;
+  fill: #e6ece4;
+  font-weight: 700;
+  font-size: 18px;
+  letter-spacing: 0.16em;
+}
+
+/* knob value read-outs */
+.box { fill: #0a0f0c; stroke: #cfd4d0; stroke-opacity: 0.35; stroke-width: 1.5; rx: 5px; ry: 5px; }
+.box-label { fill: #e6ece4; font-weight: 700; letter-spacing: 0.06em; }
+
+/* black Moog knobs: black skirt, brushed-metal cap, white pointer */
+.look-skirt { fill: #111111; }
+.look-knurl { stroke: #2a2a2a; }
+.look-body  { fill: #191919; stroke: #050505; stroke-width: 1.5; }
+.look-cap   { fill: url(#metal-radial); stroke: #585c5d; stroke-width: 1; }
+.look-line  { stroke: #f3f4f0; stroke-width: 3; }
+.knob-track { stroke: #2a4030; }
+.knob-arc   { stroke: #cfe8d8; }
+
+.seg-bg { rx: 6px; }
+.seg-tx { font-weight: 700; letter-spacing: 0.08em; }
+
+/* SYNC LEDs: dark grey when off, bright mint-green glow when on (the .on rule in default.css uses --accent-hi) */
+.look-led-bezel { fill: #0d120f; stroke: #2f3a34; }
+.look-led { fill: #2b322d; }

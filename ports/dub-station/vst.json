@@ -1,0 +1,17 @@
+{
+  "name": "Dub Station",
+  "vendor": "Lukas",
+  "uid": "DbSt",
+  "version": 100,
+  "so": "dub_station.so",
+  "effect": true,
+  "art": "html",
+  "params": "params.json",
+  "layout": "layout.conf",
+  "build": {
+    "root": "../..",
+    "sources": ["ports/dub-station/src/engine.cpp"],
+    "cflags": ["-Iports/dub-station/src", "-DHAS_LFO_BPM=1"],
+    "libs": ["-lm"]
+  }
+}
