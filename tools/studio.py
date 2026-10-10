@@ -573,8 +573,9 @@ def preview(skin_dir, out_pattern, frame=40):
                                 text, font=font, fill=rgb)
                     else:
                         dr.rectangle([x + sx, y + sy, x + sx + sw - 1, y + sy + sh - 1], outline=(70, 110, 160))
-        qx, qy, qw, qh = [int(v) for v in tab["qlinkBoundsData"][0].split()]
-        dr.rectangle([qx, qy, qx + qw, qy + qh], outline=(80, 200, 120))
+        if tab.get("qlinkBoundsData"):   # empty when hide_qlink_bounds drops the group rectangle
+            qx, qy, qw, qh = [int(v) for v in tab["qlinkBoundsData"][0].split()]
+            dr.rectangle([qx, qy, qx + qw, qy + qh], outline=(80, 200, 120))
         im.save(out)
         outs.append((out, tab["tabName"] + note))
     return outs
