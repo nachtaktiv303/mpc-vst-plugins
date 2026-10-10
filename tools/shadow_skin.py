@@ -870,7 +870,10 @@ def build(layout_path, params, skin_dir, art_bin, png_from_ppm):
                 bank, within = divmod(s, 4)
                 ql["Q-Link %d" % ((3 - within) * 4 + bank + 1)] = index[k]
             comp = "%s|%s" % (tab["name"], title)
-            group_rects = [qlink_bounds(tab, keys[b:b + 4]) for b in range(0, len(keys), 4)]
+            # hide_qlink_bounds: some firmware draws the group rectangle straight from qlinkBoundsData and
+            # ignores hideQLinkBounds, so empty the data too. The Q-Link->param binding is in qmap, not here.
+            group_rects = [] if HIDE_QLINK_BOUNDS else \
+                [qlink_bounds(tab, keys[b:b + 4]) for b in range(0, len(keys), 4)]
             pages.append({"version": 3, "tabName": title, "fnKeyIndex": t, "fnKeySubIndex": sp,
                           "qlinkBoundsData": group_rects,
                           "componentName": comp,
