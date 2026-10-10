@@ -414,11 +414,14 @@ class Art:
             self.ops.append('<g class="pill%s"><rect class="pill-track" x="%g" y="%g" width="50" height="26" rx="13"/>'
                             '<circle class="pill-thumb" cx="%d" cy="%d" r="9.5"/></g>' % (
                                 " on" if on else "", cx - 25, cy - 13, lx, cy))
-        elif op == "button" and n == 5:
+        elif op == "button" and n in (5, 7):
             cx, cy, col, lab = I(1), I(2), hexc(a[3]), a[4]
-            bw, bh = shadow_skin.text_width(lab) + 36, 39
-            if self.td3:
-                bw, bh = bw + 28, 52
+            if n == 7:          # explicit size from `button ... w= h=` (matches shadow_art.c / render_conf_preview.c)
+                bw, bh = I(5), I(6)
+            else:
+                bw, bh = shadow_skin.text_width(lab) + 36, 39
+                if self.td3:
+                    bw, bh = bw + 28, 52
             x, y = cx - bw // 2, cy - bh // 2
             self.ops.append('<g class="button%s" style="--fill:%s">'
                             '<rect class="button-bg" x="%d" y="%d" width="%d" height="%d"/>'
