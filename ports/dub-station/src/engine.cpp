@@ -431,7 +431,7 @@ struct DubStation
         gC_ = p[P_DRIFT] * 0.01f;  // DRIFT: reverb vibrato depth (Galactic drift_ = C^3*0.001); 40 = old lush
         gD_ = 0.2f + size01 * 0.8f;
         gE_ = 1.f;
-        rev_send_target_ = p[P_REVERB] * .03f; // up to 3.0: full REVERB reads clearly loud
+        rev_send_target_ = p[P_REVERB] * .05f; // up to 5.0: full REVERB reads loud (was .03/3.0, user wanted more)
         // HIPASS: one-pole HP on the reverb return, 20 Hz (off) .. ~1.5 kHz, log sweep
         const float fhp_rev = 20.f * powf(75.f, p[P_HIPASS] * .01f);
         rev_hp_a_ = 1.f - expf(-6.2831853f * fhp_rev / kSampleRate);
