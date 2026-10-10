@@ -176,73 +176,49 @@ struct Phaser
     }
 };
 
-// Raised-cosine crossfade window, table-looked-up (two grains' windows sum to 1 = constant amplitude).
-inline float RCWindow(float g)
+// Flanger on Delay B: a short LFO-swept delay with light feedback, mixed with the input. One knob (0..1)
+// scales the sweep depth, the wet mix and the feedback together; a slow fixed LFO gives the jet sweep.
+struct Flanger
 {
-    static const struct Tbl
-    {
-        float v[1025];
-        Tbl()
-        {
-            for(int i = 0; i <= 1024; i++)
-                v[i] = 0.5f * (1.f - cosf(6.2831853f * (float)i / 1024.f));
-        }
-    } t;
-    int idx = (int)(g * 1024.f);
-    idx     = idx < 0 ? 0 : idx > 1024 ? 1024 : idx;
-    return t.v[idx];
-}
-
-// Micropitch: two delay-line pitch shifters (L up, R down a few cents) for width/thickening. The grain
-// phase ramps slowly = a constant small detune; two grains half a period apart with a raised-cosine
-// crossfade hide the buffer wrap. One knob drives both the detune amount and the wet mix together.
-struct MicroPitch
-{
-    static const int kBuf = 4096;
+    static const int kBuf = 1024; // ~23 ms; the sweep uses ~0.5..7.5 ms
     float            bufL[kBuf], bufR[kBuf];
     int              w_;
-    float            phL_, phR_;
+    float            lfo_, fbL_, fbR_;
     void             Init()
     {
         for(int i = 0; i < kBuf; i++)
             bufL[i] = bufR[i] = 0.f;
         w_   = 0;
-        phL_ = 0.f;
-        phR_ = 0.5f;
+        lfo_ = 0.f;
+        fbL_ = fbR_ = 0.f;
     }
-    float ReadGrain(const float *buf, float ph) const
+    static float Read(const float *buf, float rp)
     {
-        const float D   = 1800.f; // grain depth (~40 ms)
-        float       out = 0.f;
-        for(int gi = 0; gi < 2; gi++)
-        {
-            float g = ph + 0.5f * gi;
-            if(g >= 1.f)
-                g -= 1.f;
-            const float rp = (float)w_ - g * D + (float)kBuf; // + kBuf keeps it positive -> no floorf needed
-            const int   ri = (int)rp;
-            const int   i0 = ri & (kBuf - 1);
-            const int   i1 = (i0 + 1) & (kBuf - 1);
-            const float s  = buf[i0] + (buf[i1] - buf[i0]) * (rp - (float)ri);
-            out += s * RCWindow(g);
-        }
-        return out;
+        rp += (float)kBuf; // keep positive -> no floorf needed
+        const int   ri = (int)rp;
+        const int   i0 = ri & (kBuf - 1);
+        const int   i1 = (i0 + 1) & (kBuf - 1);
+        return buf[i0] + (buf[i1] - buf[i0]) * (rp - (float)ri);
     }
-    void Process(float &l, float &r, float dphase, float mix)
+    void Process(float &l, float &r, float amt)
     {
-        bufL[w_] = l;
-        bufR[w_] = r;
-        phL_ -= dphase; // L pitched up (delay shrinking)
-        if(phL_ < 0.f)
-            phL_ += 1.f;
-        phR_ += dphase; // R pitched down (delay growing)
-        if(phR_ >= 1.f)
-            phR_ -= 1.f;
-        const float wl = ReadGrain(bufL, phL_);
-        const float wr = ReadGrain(bufR, phR_);
-        w_             = (w_ + 1) & (kBuf - 1);
-        l              = l * (1.f - mix) + wl * mix;
-        r              = r * (1.f - mix) + wr * mix;
+        const float rate = 0.20f - amt * 0.14f; // ~0.20 Hz .. ~0.06 Hz: slower the further it's turned up
+        lfo_ += rate * (1.f / 44100.f);
+        if(lfo_ >= 1.f)
+            lfo_ -= 1.f;
+        const float mod = 0.5f * (1.f - cosf(6.2831853f * lfo_)); // 0..1
+        const float d   = 22.f + mod * amt * 310.f;               // ~0.5 ms .. ~7.5 ms at full depth
+        const float fb  = amt * 0.45f;                            // light resonance, scales with the knob
+        bufL[w_]        = l + fbL_ * fb;
+        bufR[w_]        = r + fbR_ * fb;
+        const float sl  = Read(bufL, (float)w_ - d);
+        const float sr  = Read(bufR, (float)w_ - d);
+        fbL_            = sl;
+        fbR_            = sr;
+        w_              = (w_ + 1) & (kBuf - 1);
+        const float mix = amt * 0.5f; // up to 50% wet (classic flange)
+        l               = l * (1.f - mix) + sl * mix;
+        r               = r * (1.f - mix) + sr * mix;
     }
 };
 
@@ -254,7 +230,8 @@ enum {
     P_DRIFT,                                                                   // SPACE drift (Galactic vibrato)
     P_WIDTH,                                                                   // DELAY A width (ping-pong stereo + Haas)
     P_TIME2, P_FEEDBACK2, P_TONE2, P_DELAY2, P_SYNC2, P_WIDTH2,                 // DELAY B (own time/fb/tone/level/width)
-    P_MICRO,                                                                   // MOD micropitch (one knob: detune + mix)
+    P_FLANGER,                                                                 // DELAY B flanger (one knob: depth + mix)
+    P_PANIC,                                                                    // momentary kill: any tap flushes all tails
     P_COUNT
 };
 const char *const kKeys[P_COUNT] = {
@@ -262,7 +239,7 @@ const char *const kKeys[P_COUNT] = {
     "size", "reverb", "drive", "warble", "degrade", "duck", "mix",
     "noise", "noisefilt", "noisemod", "crackle", "phzrate", "phzdepth",
     "damp", "hipass", "drift", "width",
-    "time2", "feedback2", "tone2", "delay2", "sync2", "width2", "micro"};
+    "time2", "feedback2", "tone2", "delay2", "sync2", "width2", "flanger", "panic"};
 // time is in ms (Free = that delay time; Sync = the knob picks the note division).
 // feedback goes to 120 (100+ = self-oscillation); delay = echo send level; sat = tape saturation on repeats.
 // noise = one filtered noise bed (noisefilt = dark..bright tone, noisemod = movement); crackle = vinyl pops;
@@ -271,9 +248,9 @@ const char *const kKeys[P_COUNT] = {
 // width/width2 = per-delay ping-pong stereo width (0 = mono .. 100 = full, + a small Haas offset for extra width).
 // Delay B differs from A: tone2 = one bipolar LP/HP tilt (no resonance) instead of A's DJ filter + resonance.
 // delay2 (B level) defaults 0 = off, so adding the second line doesn't change existing single-delay patches.
-const float kDefaults[P_COUNT] = {1000.f, 45.f, 75.f, 0.f, 20.f, 0.f, 1.f, 55.f, 30.f, 20.f, 15.f, 0.f, 0.f, 50.f, 0.f, 50.f, 30.f, 0.f, 30.f, 0.f, 20.f, 0.f, 40.f, 100.f, 500.f, 35.f, 0.f, 0.f, 1.f, 100.f, 0.f};
-const float kMin[P_COUNT]      = {10.f, 0.f, 0.f, -100.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 10.f, 0.f, -100.f, 0.f, 0.f, 0.f, 0.f};
-const float kMax[P_COUNT]      = {2000.f, 120.f, 100.f, 100.f, 100.f, 100.f, 1.f, 100.f, 100.f, 100.f, 100.f, 100.f, 100.f, 100.f, 100.f, 100.f, 100.f, 100.f, 100.f, 100.f, 100.f, 100.f, 100.f, 100.f, 2000.f, 120.f, 100.f, 100.f, 1.f, 100.f, 100.f};
+const float kDefaults[P_COUNT] = {1000.f, 45.f, 75.f, 0.f, 20.f, 0.f, 1.f, 55.f, 30.f, 20.f, 15.f, 0.f, 0.f, 50.f, 0.f, 50.f, 30.f, 0.f, 30.f, 0.f, 20.f, 0.f, 40.f, 100.f, 500.f, 35.f, 0.f, 0.f, 1.f, 100.f, 0.f, 0.f};
+const float kMin[P_COUNT]      = {10.f, 0.f, 0.f, -100.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 10.f, 0.f, -100.f, 0.f, 0.f, 0.f, 0.f, 0.f};
+const float kMax[P_COUNT]      = {2000.f, 120.f, 100.f, 100.f, 100.f, 100.f, 1.f, 100.f, 100.f, 100.f, 100.f, 100.f, 100.f, 100.f, 100.f, 100.f, 100.f, 100.f, 100.f, 100.f, 100.f, 100.f, 100.f, 100.f, 2000.f, 120.f, 100.f, 100.f, 1.f, 100.f, 100.f, 1.f};
 
 struct DubStation
 {
@@ -284,7 +261,7 @@ struct DubStation
     chompi::Warble                              warble;
     Degrade                                     degrade;
     Phaser                                      phaser;
-    MicroPitch                                  micropitch;
+    Flanger                                     flangerB;
     DcBlock                                     dc_fb_l_, dc_fb_r_, dc_fb2_l_, dc_fb2_r_;
 
     float p[P_COUNT];
@@ -310,15 +287,16 @@ struct DubStation
     float rev_hp_l_, rev_hp_r_;        // HP filter state
     float phz_mix_, phz_mix_target_;   // phaser depth/mix
     float phz_rate_hz_;                // phaser LFO rate
-    float micro_mix_, micro_mix_target_, micro_dphase_; // micropitch wet mix + detune ramp (one knob)
+    float flanger_, flanger_target_;   // Delay B flanger amount (one knob)
 
-    float fbfilt_ctrl_, fbfilt_res_;
+    float fbfilt_ctrl_, fbfilt_res_, res_comp_; // res_comp_ = A feedback-gain comp so high resonance can't run away
     float tone2_a_, tone2_mode_, tone2_l_, tone2_r_; // Delay B bipolar tone (one-pole LP/HP, no resonance)
     float dsat_; // delay/tape saturation on the repeats (global, on the summed tails)
     float deg_ratio_, deg_q_, deg_on_, deg_lp_;
     float gA_, gB_, gC_, gD_, gE_; // Galactic params
 
     float    duck_env_;
+    int      flush_pending_, flush_cooldown_; // PANIC: deferred to the audio thread + debounced (see ApplyFx)
     float    fb_lp_l_, fb_lp_r_;   // one-pole LP in the feedback path (tape-style band-limit, tames aliasing)
     float    fb_lp2_l_, fb_lp2_r_; // Delay B feedback band-limit LP
     uint32_t rng_;
@@ -409,12 +387,7 @@ struct DubStation
             const float r = p[P_PHZRATE] * .01f;
             phz_rate_hz_  = 0.025f + r * r * 2.f; // 0.025 .. ~2 Hz: half speed, really slow at the bottom
         }
-        {
-            // one MICRO knob: more knob = more detune AND more wet, together
-            const float mp    = p[P_MICRO] * .01f;
-            micro_dphase_     = (powf(2.f, (mp * 18.f) / 1200.f) - 1.f) / 1800.f; // up to ~18 cents
-            micro_mix_target_ = mp * 0.5f;                                        // up to 50% wet (0 = off)
-        }
+        flanger_target_ = p[P_FLANGER] * .01f; // Delay B flanger amount (one knob: depth + mix + feedback)
 
         const float drv = logf(1.7f * (p[P_DRIVE] * .01f) + 1.f);
         sat_target_      = drv * 13.f + 1.f;
@@ -424,7 +397,12 @@ struct DubStation
         // DJ filter: knob full travel maps to ctrl [0.15, 0.85] (= old ±70) so the extremes stay audible
         // instead of fully closing the LP/HP; centre (0) is flat.
         fbfilt_ctrl_ = 0.5f + (p[P_FBFILTER] * .01f) * 0.35f;
-        fbfilt_res_  = p[P_FBRESO] * .01f * 0.8f; // stronger resonance; the feedback LP below tames its aliasing
+        fbfilt_res_  = p[P_FBRESO] * .01f * 0.72f; // max resonance trimmed 10% (0.8->0.72) to ease aliasing
+        // the resonant peak lives inside A's feedback loop, so high resonance lifts the loop gain and runs away.
+        // Only the top half of the resonance knob gets compensated, so normal/low resonance leaves the feedback
+        // (and the long 120% tails) fully intact; past ~50% it ramps in to stop the self-oscillation buildup.
+        const float rx = fbfilt_res_ - 0.4f;
+        res_comp_      = rx > 0.f ? 1.f / (1.f + rx * 1.0f) : 1.f; // 1.0 up to ~50% reso -> ~0.71 at full (gentle)
         // Delay B TONE: one bipolar one-pole. Centre = flat; left = low-pass down to 100 Hz,
         // right = high-pass up to 10 kHz (gentle 6 dB/oct, no resonance -> different character than A).
         {
@@ -500,12 +478,14 @@ struct DubStation
         warble.Init(kSampleRate);
         degrade.Init();
         phaser.Init();
-        micropitch.Init();
+        flangerB.Init();
         dc_fb_l_.Init();
         dc_fb_r_.Init();
         dc_fb2_l_.Init();
         dc_fb2_r_.Init();
         duck_env_  = 0.f;
+        flush_pending_ = 0;
+        flush_cooldown_ = 0;
         fb_lp_l_ = fb_lp_r_ = 0.f;
         fb_lp2_l_ = fb_lp2_r_ = 0.f;
         rng_       = 2463534242u;
@@ -531,12 +511,47 @@ struct DubStation
         del_send2_   = del_send2_target_;
         rev_send_    = rev_send_target_;
         phz_mix_     = phz_mix_target_;
-        micro_mix_   = micro_mix_target_;
+        flanger_     = flanger_target_;
         return true;
+    }
+
+    // PANIC: silence every tail/feedback right now (delay buffers, reverb network, mod + filter states).
+    // Params are left untouched; the next block re-applies them, so live input keeps flowing cleanly.
+    void Flush()
+    {
+        if(del_mem)  memset(del_mem,  0, kMaxDelayTime * sizeof *del_mem);
+        if(del2_mem) memset(del2_mem, 0, kMaxDelayTime * sizeof *del2_mem);
+        galactic.Init();          // memsets its whole delay network, then restores defaults
+        phaser.Init();
+        flangerB.Init();
+        dc_fb_l_.Init();  dc_fb_r_.Init();  dc_fb2_l_.Init();  dc_fb2_r_.Init();
+        tone2_l_  = tone2_r_  = 0.f;
+        for(int i = 0; i < kHaasMax; i++)
+            haasA_[i] = haasB_[i] = 0.f;
+        haasA_i_  = haasB_i_  = 0;
+        duck_env_ = 0.f;
+        fb_lp_l_  = fb_lp_r_  = 0.f;
+        fb_lp2_l_ = fb_lp2_r_ = 0.f;
+        noise_lp_l_ = noise_lp_r_ = noise_hp_l_ = noise_hp_r_ = crk_env_l_ = crk_env_r_ = 0.f;
+        rev_hp_l_ = rev_hp_r_ = 0.f;
+        noise_gust_ = 0.f;
     }
 
     void ApplyFx(float *outl, float *outr, size_t size)
     {
+        // PANIC: run the requested flush here (audio thread, no race with set_param). The flush is a ~2.5 MB
+        // memset (delay buffers + Galactic's reverb network) = one brief CPU spike, harmless on a real tap but
+        // pathological if hammered, so it's debounced to at most once per 500 ms. One tap kills everything; a
+        // second kill isn't needed sooner than that.
+        if(flush_cooldown_ > 0)
+            flush_cooldown_ -= (int)size;
+        if(flush_pending_ && flush_cooldown_ <= 0)
+        {
+            Flush();
+            flush_pending_  = 0;
+            flush_cooldown_ = (int)(0.5f * kSampleRate);
+        }
+
         float dryl[128], dryr[128], coll[128], colr[128];
         galactic.SetParams(gA_, gB_, gC_, gD_, gE_);
         fbfilter.SetControl(fbfilt_ctrl_);
@@ -558,7 +573,7 @@ struct DubStation
             fonepole(del_send_, del_send_target_, .001f);
             fonepole(del_send2_, del_send2_target_, .001f);
             fonepole(phz_mix_, phz_mix_target_, .001f);
-            fonepole(micro_mix_, micro_mix_target_, .001f);
+            fonepole(flanger_, flanger_target_, .001f);
 
             dryl[i] = outl[i];
             dryr[i] = outr[i];
@@ -598,8 +613,8 @@ struct DubStation
             flA = fb_lp_l_;
             frA = fb_lp_r_;
             {
-                const float in_l = kCeil * tanhf((srcL + frA * regen_) / kCeil); // cross L/R = ping-pong
-                const float in_r = kCeil * tanhf((srcR + flA * regen_) / kCeil);
+                const float in_l = kCeil * tanhf((srcL + frA * regen_ * res_comp_) / kCeil); // cross L/R = ping-pong
+                const float in_r = kCeil * tanhf((srcR + flA * regen_ * res_comp_) / kCeil);
                 const chompi::InterpolatedDelayLine::AudioSample wsA
                     = {int16_t(f2s16(in_l)), int16_t(f2s16(in_r))};
                 del.Write(wsA);
@@ -639,6 +654,8 @@ struct DubStation
             float elB = flB, erB = frB;
             WidthStereo(elB, erB, width_b_);
             erB = HaasTap(haasB_, haasB_i_, erB, (int)(width_b_ * 120.f));
+            if(flanger_ > 0.0005f) // flanger on Delay B's repeats only
+                flangerB.Process(elB, erB, flanger_);
 
             // sum the two delays at their send levels
             float echoL = elA * del_send_ + elB * del_send2_;
@@ -652,8 +669,6 @@ struct DubStation
             }
             if(phz_mix_ > 0.0005f) // phaser on the summed echoes only (classic phased delay; reverb stays clean)
                 phaser.Process(echoL, echoR, phz_rate_hz_, phz_mix_);
-            if(micro_mix_ > 0.0005f) // micropitch on the echoes too (width/thickening)
-                micropitch.Process(echoL, echoR, micro_dphase_, micro_mix_);
             wl += echoL;
             wr += echoR;
 
@@ -806,6 +821,8 @@ void dc_set_param(void *inst, const char *key, const char *val)
     if(i < 0)
         return;
     SetValue(t, i, (float)atof(val));
+    if(i == P_PANIC)   // any tap of the Panic toggle requests a flush; the audio thread does it (debounced)
+        t->flush_pending_ = 1;
     t->Apply();
 }
 
@@ -836,6 +853,29 @@ int dc_get_param(void *inst, const char *key, char *buf, int buf_len)
                             (int)(t->DivMs(d) + 0.5f));
         }
         return snprintf(buf, buf_len, "%d ms", (int)(t->p[i] + 0.5f));
+    }
+    if(i == P_FBFILTER)
+    {
+        // Delay A DJ filter, shown like B's tone: "<raw>\x1f<text>" keeps the knob position, text shows the
+        // LP/HP corner. Mirror DJFilter::SetControl so the readout matches what the filter actually does;
+        // corner Hz from the one-pole coeff g via fc = -(fs/2pi)*ln(1-g).
+        const int   raw  = (int)lroundf(t->p[P_FBFILTER]);
+        const float ctrl = 0.5f + (t->p[P_FBFILTER] * .01f) * 0.35f; // [0.15, 0.85]
+        float glp = .01f + ctrl * 2.f;  if(glp > .90f) glp = .90f; if(glp < 0.f) glp = 0.f; glp = glp * glp * glp;
+        float ghp = ctrl * 1.9f - 1.f;  if(ghp > 1.f)  ghp = 1.f;  if(ghp < 0.f) ghp = 0.f; ghp = ghp * ghp * ghp;
+        if(ghp > 1e-4f)
+        {
+            const float fc = -(kSampleRate / 6.2831853f) * logf(1.f - ghp);
+            if(fc >= 1000.f)
+                return snprintf(buf, buf_len, "%d\x1fHP %.1f kHz", raw, (double)(fc / 1000.f));
+            return snprintf(buf, buf_len, "%d\x1fHP %d Hz", raw, (int)(fc + 0.5f));
+        }
+        if(glp < .728f) // .729 = wide open; below that the LP is actually closing
+        {
+            const int fc = (int)(-(kSampleRate / 6.2831853f) * logf(1.f - glp) + 0.5f);
+            return snprintf(buf, buf_len, "%d\x1fLP %d Hz", raw, fc);
+        }
+        return snprintf(buf, buf_len, "%d\x1f" "Flat", raw);
     }
     if(i == P_TONE2)
     {

@@ -62,10 +62,14 @@ class DjFilter
         *out_r = filt_r;
     }
 
-    void SetControl(float cutoff) 
-    { 
+    void SetControl(float cutoff)
+    {
         cutoff_ = cutoff;
-        lp_target_ = daisysp::fclamp(.01f + cutoff_ * 2.f, 0.f, .99f);
+        // [dub-station deviation] LP cutoff ceiling capped .99 -> .90 (anti-alias "approach 1"):
+        // this SVF's resonance feedback is res + res/(1-freq); near freq=1 that term explodes and the
+        // filter goes marginally stable / aliases ("bitcrush") at high resonance. Keeping the coefficient
+        // off Nyquist keeps the resonant peak clean. Slightly darker fully-open LP is the trade-off.
+        lp_target_ = daisysp::fclamp(.01f + cutoff_ * 2.f, 0.f, .90f);
         lp_target_ = lp_target_ * lp_target_ * lp_target_;
 
         hp_target_ = daisysp::fclamp((cutoff_ * 1.9f) - 1.f, 0.f, 1.f);

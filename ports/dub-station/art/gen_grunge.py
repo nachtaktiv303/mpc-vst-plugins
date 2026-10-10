@@ -58,9 +58,9 @@ def scratch(draw, n, hmax, length, wmin, wmax, val, horiz_bias):
 # very sparse + faint -- the strips had far too many visible lines
 scratch(lD, 22, 72, (60, 300), 1, 2, 38, 0.99)    # bright brush lines
 scratch(dD, 12, 72, (40, 220), 1, 2, 28, 0.99)    # dark brush lines
-# a few general scratches over the whole faceplate
-scratch(dD, 12, 0, (30, 160), 1, 2, 28, 0.7)
-scratch(lD, 8, 0, (20, 120), 1, 2, 22, 0.7)
+# general scratches over the whole faceplate -- a bit more visible (more + stronger + longer)
+scratch(dD, 26, 0, (40, 230), 1, 2, 44, 0.7)
+scratch(lD, 16, 0, (30, 180), 1, 2, 34, 0.7)
 # blur a touch more so lines soften into scuffs rather than crisp strokes
 light += np.asarray(ld.filter(ImageFilter.GaussianBlur(0.9)), np.float32) / 255.0
 dark  += np.asarray(dd.filter(ImageFilter.GaussianBlur(0.9)), np.float32) / 255.0

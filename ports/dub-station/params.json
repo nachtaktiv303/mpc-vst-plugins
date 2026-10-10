@@ -3,14 +3,15 @@
   "params": [
     {"key": "time",     "name": "Time",          "min": 10,   "max": 2000, "default": 1000, "display": "string"},
     {"key": "feedback", "name": "Feedback",      "min": 0,    "max": 120, "unit": "%", "default": 45},
-    {"key": "fbfilter", "name": "Filter",        "min": -100, "max": 100, "default": 0},
+    {"key": "fbfilter", "name": "Filter",        "min": -100, "max": 100, "default": 0, "display": "string"},
     {"key": "fbreso",   "name": "Resonance",     "min": 0,    "max": 100, "unit": "%", "default": 20},
     {"key": "delay",    "name": "Level",         "min": 0,    "max": 100, "unit": "%", "default": 75},
     {"key": "width",    "name": "Width",         "min": 0,    "max": 100, "unit": "%", "default": 100},
     {"key": "sync",     "name": "Sync",          "options": ["Free", "Sync"], "default": 1, "notify": "time"},
     {"key": "time2",    "name": "Time",          "min": 10,   "max": 2000, "default": 500, "display": "string"},
     {"key": "feedback2","name": "Feedback",      "min": 0,    "max": 120, "unit": "%", "default": 35},
-    {"key": "tone2",    "name": "Tone",          "min": -100, "max": 100, "default": 0, "display": "string"},
+    {"key": "tone2",    "name": "Filter",        "min": -100, "max": 100, "default": 0, "display": "string"},
+    {"key": "flanger",  "name": "Flanger",       "min": 0,    "max": 100, "unit": "%", "default": 0},
     {"key": "delay2",   "name": "Level",         "min": 0,    "max": 100, "unit": "%", "default": 0},
     {"key": "width2",   "name": "Width",         "min": 0,    "max": 100, "unit": "%", "default": 100},
     {"key": "sync2",    "name": "Sync",          "options": ["Free", "Sync"], "default": 1, "notify": "time2"},
@@ -31,11 +32,11 @@
     {"key": "crackle",  "name": "Crackle",       "min": 0,    "max": 100, "unit": "%", "default": 0},
     {"key": "phzrate",  "name": "Rate",          "min": 0,    "max": 100, "unit": "%", "default": 30},
     {"key": "phzdepth", "name": "Depth",         "min": 0,    "max": 100, "unit": "%", "default": 0},
-    {"key": "micro",    "name": "Micropitch",    "min": 0,    "max": 100, "unit": "%", "default": 0}
+    {"key": "panic",    "name": "Panic",         "options": ["Off", "On"], "default": 0}
   ],
   "sections": [
-    {"label": "Delay",       "keys": ["time", "feedback", "fbfilter", "fbreso", "delay", "width", "sync", "time2", "feedback2", "tone2", "delay2", "width2", "sync2", "sat", "duck", "mix"]},
+    {"label": "Delay",       "keys": ["time", "feedback", "fbfilter", "fbreso", "delay", "width", "sync", "time2", "feedback2", "tone2", "flanger", "delay2", "width2", "sync2", "sat", "duck", "mix", "panic"]},
     {"label": "Space / Tape","keys": ["size", "reverb", "damp", "hipass", "drift", "drive", "warble", "degrade"]},
-    {"label": "Air / Mod",   "keys": ["noise", "noisefilt", "noisemod", "crackle", "phzrate", "phzdepth", "micro"]}
+    {"label": "Air / Mod",   "keys": ["noise", "noisefilt", "noisemod", "crackle", "phzrate", "phzdepth"]}
   ]
 }
